@@ -9,6 +9,7 @@ void broadcast(int clients[], int sender, char *message, int client_count) {
 	for (int i = 0; i < client_count; i++) {
 		if (clients[i] != -1 && i != sender) {
 			dprintf(clients[i], "client %d: %s\n", sender, message);
+			// send(clients[i], message, strlen(message), 0);
 		}
 	}
 }

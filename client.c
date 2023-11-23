@@ -4,8 +4,22 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
 
 #define BUFFER_SIZE 4096
+
+int is_stdin_ready() {
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(STDIN_FILENO, &read_fds);
+
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+
+    return select(STDIN_FILENO + 1, &read_fds, NULL, NULL, &timeout) > 0;
+}
 
 int main(int argc, char **argv) {
     if (argc != 3) {
@@ -22,6 +36,13 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
+    // Imposta il socket su modalità non bloccante
+    if (fcntl(client_socket, F_SETFL, O_NONBLOCK) == -1) {
+        perror("Error setting socket to non-blocking");
+        close(client_socket);
+        exit(1);
+    }
+
     struct sockaddr_in server_address;
     memset(&server_address, 0, sizeof(server_address));
     server_address.sin_family = AF_INET;
@@ -33,7 +54,7 @@ int main(int argc, char **argv) {
         exit(1);
     }
 
-    if (connect(client_socket, (struct sockaddr *)&server_address, sizeof(server_address)) == -1) {
+    if (connect(client_socket, (struct sockaddr *)&server_address, sizeof(server_address)) == -1 && errno != EINPROGRESS) {
         perror("Error connecting to server");
         close(client_socket);
         exit(1);
@@ -41,18 +62,29 @@ int main(int argc, char **argv) {
 
     char buffer[BUFFER_SIZE];
 
-    while (1) {
-        printf("Enter a message (or 'exit' to quit): ");
-        fgets(buffer, sizeof(buffer), stdin);
+ while (1) {
+        // Controlla se ci sono dati disponibili su stdin
+        if (is_stdin_ready()) {
+            // Leggi input in modo non bloccante
+            fgets(buffer, sizeof(buffer), stdin);
 
-        if (send(client_socket, buffer, strlen(buffer), 0) == -1) {
-            perror("Error sending message");
-            break;
+            if (send(client_socket, buffer, strlen(buffer), 0) == -1) {
+                perror("Error sending message");
+                break;
+            }
+
+            if (strcmp(buffer, "exit\n") == 0) {
+                printf("Exiting...\n");
+                break;
+            }
         }
 
-        if (strcmp(buffer, "exit\n") == 0) {
-            printf("Exiting...\n");
-            break;
+        // Ricevi e stampa la risposta dal server (non bloccante)
+        memset(buffer, 0, sizeof(buffer));
+        ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
+
+        if (bytes_received > 0) {
+            printf("Server response: %s", buffer);
         }
     }
 
