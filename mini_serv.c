@@ -1,9 +1,20 @@
+// telnet 127.0.0.1 8080
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-// #include <sys/socket.h>
+#include <sys/socket.h>
+
+void errorStr(char* str) {
+	if (str) {
+		write(2, str, strlen(str));
+	} else {
+		write(2, "Fatal error\n", 12);
+	}
+	exit(1);
+}
 
 void broadcast(int* clients, int sender, const char* message, int client_count) {
 	char broadcast_message[4096];
@@ -16,21 +27,13 @@ void broadcast(int* clients, int sender, const char* message, int client_count) 
 	}
 }
 
-void errorStr(char* str) {
-	if (str) {
-		write(2, str, strlen(str));
-	} else {
-		write(2, "Fatal error\n", 12);
-	}
-	exit(1);
-}
-
 int main(int argc, char** argv) {
 	if (argc != 2) {
 		errorStr("Wrong number of argument\n");
 	}
 	int client_count = 10;
 	int port = atoi(argv[1]);
+	char buffer[4096];
 
 	int server_socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (server_socket == -1) {
@@ -39,7 +42,11 @@ int main(int argc, char** argv) {
 
 	struct sockaddr_in server_address, client_address;
 	socklen_t client_address_len = sizeof(client_address);
-	char buffer[4096];
+	memset(&server_address, 0, sizeof(server_address));
+	server_address.sin_family = AF_INET;
+	server_address.sin_port = htons(port);
+	server_address.sin_addr.s_addr = INADDR_ANY;
+
 	int clients[client_count];
 	for (int i = 0; i < client_count; i++) {
 		clients[i] = -1;
@@ -47,11 +54,6 @@ int main(int argc, char** argv) {
 
 	fd_set read_fds;
 	int max_fd;
-
-	memset(&server_address, 0, sizeof(server_address));
-	server_address.sin_family = AF_INET;
-	server_address.sin_port = htons(port);
-	server_address.sin_addr.s_addr = INADDR_ANY;
 
 	if (bind(server_socket, (struct sockaddr *)&server_address, sizeof(server_address)) == -1) {
 		close(server_socket);
