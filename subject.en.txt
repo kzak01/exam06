@@ -25,21 +25,25 @@ The fd that you will receive will already be set to make 'recv' or 'send'
 to block if select hasn't be called before calling them, but will not block otherwise. 
 
 When a client connect to the server:
-- the client will be given an id. the first client will receive the id 0 and each new client will received the last client id + 1
+- the client will be given an id. the first client will receive the id 0 and each new client
+  will received the last client id + 1
 - %d will be replace by this number
 - a message is sent to all the client that was connected to the server: "server: client %d just arrived\n"
 
 clients must be able to send messages to your program.
 - message will only be printable characters, no need to check
 - a single message can contains multiple \n
-- when the server receive a message, it must resend it to all the other client with "client %d: " before every line!
+- when the server receive a message, it must resend it to all the other client with "client %d: "
+  before every line!
 
 When a client disconnect from the server:
 - a message is sent to all the client that was connected to the server: "server: client %d just left\n"
 
 Memory or fd leaks are forbidden
 
-To help you, you will find the file main.c with the beginning of a server and maybe some useful functions. (Beware this file use forbidden functions or write things that must not be there in your final program)
+To help you, you will find the file main.c with the beginning of a server and maybe
+some useful functions. (Beware this file use forbidden functions or write things
+that must not be there in your final program)
 
 Warning our tester is expecting that you send the messages as fast as you can. Don't do un-necessary buffer.
 

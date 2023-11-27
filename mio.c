@@ -13,13 +13,13 @@ void errorStr(char* str) {
 	exit(1);
 }
 
-void broadcast(int* clients, int s, const char* m, int c_count) {
+void broadcast(int* cli, int s, const char* m, int c_count) {
 	char br_m[4096];
 	sprintf(br_m, "client %d: %s\n", s, m);
 
 	for (int i = 0; i < c_count; i++) {
-		if (clients[i] != -1 && i != s)
-			send(clients[i], br_m, sizeof(br_m), 0);
+		if (cli[i] != -1 && i != s)
+			send(cli[i], br_m, strlen(br_m), 0);
 	}
 }
 
@@ -41,29 +41,29 @@ int main(int argc, char** argv) {
 	s_addr.sin_port = htons(port);
 	s_addr.sin_addr.s_addr = INADDR_ANY;
 
-	int clients[c_count];
+	int cli[c_count];
 	for (int i = 0; i < c_count; i++)
-		clients[i] = -1;
+		cli[i] = -1;
 	
 	fd_set read_fds;
 	int max_fd;
 
-	if (bind(s_sock, (struct sockaddr*)&s_addr, sizeof(s_addr)) == -1
+	if (bind(s_sock, (struct sockaddr *)&s_addr, sizeof(s_addr)) == -1 \
 		|| listen(s_sock, c_count) == -1) {
 		close(s_sock);
 		errorStr(NULL);
 	}
 
-	while(1) {
+	while (1) {
 		FD_ZERO(&read_fds);
 		FD_SET(s_sock, &read_fds);
 		max_fd = s_sock;
 
 		for (int i = 0; i < c_count; i++) {
-			if (clients[i] != -1) {
-				FD_SET(clients[i], &read_fds);
-				if (clients[i] > max_fd)
-					max_fd = clients[i];
+			if (cli[i] != -1) {
+				FD_SET(cli[i], &read_fds);
+				if (cli[i] > max_fd)
+					max_fd = cli[i];
 			}
 		}
 		if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) {
@@ -71,33 +71,33 @@ int main(int argc, char** argv) {
 			errorStr(NULL);
 		}
 		if (FD_ISSET(s_sock, &read_fds)) {
-			int new_c = accept(s_sock, (struct sockaddr *)& c_addr, &c_addr_len);
-			if (new_c == -1) {
+			int new_cli = accept(s_sock, (struct sockaddr *)&c_addr, &c_addr_len);
+			if (new_cli == -1) {
 				close(s_sock);
 				errorStr(NULL);
 			}
-			for (int i = 0; i < c_count; i++) {
-				if (clients[i] == -1) {
-					clients[i] = new_c;
+			for(int i = 0; i < c_count; i++) {
+				if (cli[i] == -1) {
+					cli[i] = new_cli;
 					printf("server: client %d just arrived\n", i);
 					break;
 				}
 			}
 		}
 		for (int i = 0; i < c_count; i++) {
-			if (clients[i] != -1 && FD_ISSET(clients[i], &read_fds)) {
+			if (cli[i] != -1 && FD_ISSET(cli[i], &read_fds)) {
 				memset(buff, 0, sizeof(buff));
-				ssize_t b_r = recv(clients[i], buff, sizeof(buff), 0);
+				ssize_t b_r = recv(cli[i], buff, sizeof(buff), 0);
 				if (b_r <= 0) {
 					printf("server: client %d just left\n", i);
-					close(clients[i]);
-					clients[i] = -1;
-				} else {
-					broadcast(clients, i, buff, c_count);
-				}
+					close(cli[i]);
+					cli[i] = -1;
+				} else
+					broadcast(cli, i, buff, c_count);
 			}
 		}
 	}
+
 	close(s_sock);
 	return 0;
 }

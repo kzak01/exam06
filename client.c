@@ -36,7 +36,6 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	// Imposta il socket su modalità non bloccante
 	if (fcntl(client_socket, F_SETFL, O_NONBLOCK) == -1) {
 		perror("Error setting socket to non-blocking");
 		close(client_socket);
@@ -62,10 +61,8 @@ int main(int argc, char **argv) {
 
 	char buffer[BUFFER_SIZE];
 
- while (1) {
-		// Controlla se ci sono dati disponibili su stdin
+	while (1) {
 		if (is_stdin_ready()) {
-			// Leggi input in modo non bloccante
 			fgets(buffer, sizeof(buffer), stdin);
 
 			if (send(client_socket, buffer, strlen(buffer), 0) == -1) {
@@ -79,7 +76,6 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		// Ricevi e stampa la risposta dal server (non bloccante)
 		memset(buffer, 0, sizeof(buffer));
 		ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
 
