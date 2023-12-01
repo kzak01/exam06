@@ -1,4 +1,6 @@
 // telnet 127.0.0.1 8080
+// nc 127.0.0.1 8080
+// nc -l 8080
 
 #include <string.h>
 #include <unistd.h>
