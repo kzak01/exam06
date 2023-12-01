@@ -5,51 +5,56 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-void errorStr(char* str) {
-	if (str)
-		write(2, str, strlen(str));
+void errorStr(char* msg) {
+	if (msg)
+		write(2, msg, strlen(msg));
 	else
 		write(2, "Fatal error\n", 12);
 	exit(1);
 }
 
-void broadcast(int* cli, int s, const char* m, int c_count) {
+void broadcast(int* c, int s, const char* m, int c_c, int t) {
 	char br_m[4096];
-	sprintf(br_m, "client %d: %s\n", s, m);
 
-	for (int i = 0; i < c_count; i++) {
-		if (cli[i] != -1 && i != s)
-			send(cli[i], br_m, strlen(br_m), 0);
+	if (t == 0)
+		sprintf(br_m, "server: client %d just arrived\n", s);
+	else if (t == 1)
+		sprintf(br_m, "server: client %d just left\n", s);
+	else if (t == 2)
+		sprintf(br_m, "client %d: %s", s, m);
+
+	for (int i = 0; i < c_c; i++) {
+		if (c[i] != -1 && i != s)
+			send(c[i], br_m, strlen(br_m), 0);
 	}
 }
 
 int main(int argc, char** argv) {
 	if (argc != 2)
 		errorStr("Wrong number of argument\n");
-
-	int c_count = 10;
+	int c_c = 10;
 	int port = atoi(argv[1]);
 	char buff[4096];
 
 	int s_sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (s_sock == -1)
 		errorStr(NULL);
-	struct sockaddr_in s_addr, c_addr;
-	socklen_t c_addr_len = sizeof(c_addr);
-	memset(&s_addr, 0, sizeof(s_addr));
-	s_addr.sin_family = AF_INET;
-	s_addr.sin_port = htons(port);
-	s_addr.sin_addr.s_addr = INADDR_ANY;
+	struct sockaddr_in s_add, c_add;
+	socklen_t c_add_len = sizeof(c_add);
+	memset(&s_add, 0, sizeof(s_add));
+	s_add.sin_family = AF_INET;
+	s_add.sin_port = htons(port);
+	s_add.sin_addr.s_addr = INADDR_ANY;
 
-	int cli[c_count];
-	for (int i = 0; i < c_count; i++)
-		cli[i] = -1;
-	
+	int c[c_c];
+	for (int i = 0; i < c_c; i++)
+		c[i] = -1;
+
 	fd_set read_fds;
 	int max_fd;
 
-	if (bind(s_sock, (struct sockaddr *)&s_addr, sizeof(s_addr)) == -1 \
-		|| listen(s_sock, c_count) == -1) {
+	if (bind(s_sock, (struct sockaddr *)&s_add, sizeof(s_add)) == -1
+		|| listen(s_sock, c_c) == -1) {
 		close(s_sock);
 		errorStr(NULL);
 	}
@@ -59,45 +64,48 @@ int main(int argc, char** argv) {
 		FD_SET(s_sock, &read_fds);
 		max_fd = s_sock;
 
-		for (int i = 0; i < c_count; i++) {
-			if (cli[i] != -1) {
-				FD_SET(cli[i], &read_fds);
-				if (cli[i] > max_fd)
-					max_fd = cli[i];
+		for (int i = 0; i < c_c; i++) {
+			if (c[i] != -1) {
+				FD_SET(c[i], &read_fds);
+				if (c[i] > max_fd)
+					max_fd = c[i];
 			}
 		}
+
 		if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) {
 			close(s_sock);
 			errorStr(NULL);
 		}
+
 		if (FD_ISSET(s_sock, &read_fds)) {
-			int new_cli = accept(s_sock, (struct sockaddr *)&c_addr, &c_addr_len);
-			if (new_cli == -1) {
+			int new_c = accept(s_sock, (struct sockaddr *)&c_add, &c_add_len);
+			if (new_c == -1) {
 				close(s_sock);
 				errorStr(NULL);
 			}
-			for(int i = 0; i < c_count; i++) {
-				if (cli[i] == -1) {
-					cli[i] = new_cli;
-					printf("server: client %d just arrived\n", i);
+			for (int i = 0; i < c_c; i++) {
+				if (c[i] == -1) {
+					c[i] = new_c;
+					broadcast(c, i, NULL, c_c, 0);
 					break;
 				}
 			}
 		}
-		for (int i = 0; i < c_count; i++) {
-			if (cli[i] != -1 && FD_ISSET(cli[i], &read_fds)) {
+
+		for (int i = 0; i < c_c; i++) {
+			if (c[i] != -1 && FD_ISSET(c[i], &read_fds)) {
 				memset(buff, 0, sizeof(buff));
-				ssize_t b_r = recv(cli[i], buff, sizeof(buff), 0);
+				ssize_t b_r = recv(c[i], buff, sizeof(buff), 0);
 				if (b_r <= 0) {
-					printf("server: client %d just left\n", i);
-					close(cli[i]);
-					cli[i] = -1;
-				} else
-					broadcast(cli, i, buff, c_count);
+					broadcast(c, i, NULL, c_c, 1);
+					close(c[i]);
+					c[i] = -1;
+				} else {
+					broadcast(c, i, buff, c_c, 2);
+				}
 			}
 		}
 	}
-
 	close(s_sock);
 	return 0;
 }

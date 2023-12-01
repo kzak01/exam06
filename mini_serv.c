@@ -1,24 +1,31 @@
 // telnet 127.0.0.1 8080
 
 #include <string.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
-#include <arpa/inet.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 
-void errorStr(char* str) {
-	if (str) {
-		write(2, str, strlen(str));
+void errorStr(char* msg) {
+	if (msg) {
+		write(2, msg, strlen(msg));
 	} else {
 		write(2, "Fatal error\n", 12);
 	}
 	exit(1);
 }
 
-void broadcast(int* clients, int sender, const char* message, int client_count) {
+void broadcast(int* clients, int sender, const char* message, int client_count, int type) {
 	char broadcast_message[4096];
-	sprintf(broadcast_message, "client %d: %s\n", sender, message);
+
+	if (type == 0) {
+		sprintf(broadcast_message, "server: client %d just arrived\n", sender);
+	} else if (type == 1) {
+		sprintf(broadcast_message, "server: client %d just left\n", sender);
+	} else if (type == 2) {
+		sprintf(broadcast_message, "client %d: %s", sender, message);
+	}
 
 	for (int i = 0; i < client_count; i++) {
 		if (clients[i] != -1 && i != sender) {
@@ -67,7 +74,7 @@ int main(int argc, char** argv) {
 
 	printf("Server listening on port %d...\n", port);
 
-	while(1) {
+while (1) {
 		FD_ZERO(&read_fds);
 		FD_SET(server_socket, &read_fds);
 		max_fd = server_socket;
@@ -95,7 +102,7 @@ int main(int argc, char** argv) {
 			for (int i = 0; i < client_count; i++) {
 				if (clients[i] == -1) {
 					clients[i] = new_client;
-					printf("server: client %d just arrived\n", i);
+					broadcast(clients, i, NULL, client_count, 0);
 					break;
 				}
 			}
@@ -107,16 +114,16 @@ int main(int argc, char** argv) {
 				ssize_t bytes_received = recv(clients[i], buffer, sizeof(buffer), 0);
 
 				if (bytes_received <= 0) {
-					printf("server: client %d just left\n", i);
+					broadcast(clients, i, NULL, client_count, 1);
 					close(clients[i]);
 					clients[i] = -1;
 				} else {
-					broadcast(clients, i, buffer, client_count);
+					broadcast(clients, i, buffer, client_count, 2);
 				}
 			}
 		}
-
 	}
+
 	close(server_socket);
 	return 0;
 }

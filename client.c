@@ -49,6 +49,7 @@ int main(int argc, char **argv) {
 
 	if (inet_pton(AF_INET, server_ip, &server_address.sin_addr) <= 0) {
 		perror("Error converting server IP address");
+		fprintf(stderr, "Invalid IP address: %s\n", server_ip);
 		close(client_socket);
 		exit(1);
 	}
