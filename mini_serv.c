@@ -7,11 +7,12 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-
 typedef struct s_clients {
 	int		fd;
-	int		nbr;
+	int		id;
 } t_clients;
+
+enum { NEW, LEFT, WRITE };
 
 void errorStr(char* msg) {
 	if (msg) {
@@ -25,12 +26,12 @@ void errorStr(char* msg) {
 void broadcast(t_clients* clients, int sender, const char* message, int client_count, int type) {
 	char broadcast_message[4096];
 
-	if (type == 0) {
-		sprintf(broadcast_message, "server: client %d just arrived\n", clients[sender].nbr);
-	} else if (type == 1) {
-		sprintf(broadcast_message, "server: client %d just left\n", clients[sender].nbr);
-	} else if (type == 2) {
-		sprintf(broadcast_message, "client %d: %s", clients[sender].nbr, message);
+	if (type == NEW) {
+		sprintf(broadcast_message, "server: client %d just arrived\n", clients[sender].id);
+	} else if (type == LEFT) {
+		sprintf(broadcast_message, "server: client %d just left\n", clients[sender].id);
+	} else if (type == WRITE) {
+		sprintf(broadcast_message, "client %d: %s", clients[sender].id, message);
 	}
 
 	for (int i = 0; i < client_count; i++) {
@@ -61,11 +62,11 @@ int main(int argc, char** argv) {
 	server_address.sin_port = htons(port);
 	server_address.sin_addr.s_addr = htonl(2130706433); //127.0.0.1
 
-	int last_nbr = 0;
+	int last_id = 0;
 	t_clients clients[client_count];
 	for (int i = 0; i < client_count; i++) {
 		clients[i].fd = -1;
-		clients[i].nbr = 0;
+		clients[i].id = 0;
 	}
 
 	fd_set read_fds;
@@ -111,9 +112,9 @@ int main(int argc, char** argv) {
 			for (int i = 0; i < client_count; i++) {
 				if (clients[i].fd == -1) {
 					clients[i].fd = new_client;
-					clients[i].nbr = last_nbr;
-					last_nbr++;
-					broadcast(clients, i, NULL, client_count, 0);
+					clients[i].id = last_id;
+					last_id++;
+					broadcast(clients, i, NULL, client_count, NEW);
 					break;
 				}
 			}
@@ -125,11 +126,11 @@ int main(int argc, char** argv) {
 				ssize_t bytes_received = recv(clients[i].fd, buffer, sizeof(buffer), 0);
 
 				if (bytes_received <= 0) {
-					broadcast(clients, i, NULL, client_count, 1);
+					broadcast(clients, i, NULL, client_count, LEFT);
 					close(clients[i].fd);
 					clients[i].fd = -1;
 				} else {
-					broadcast(clients, i, buffer, client_count, 2);
+					broadcast(clients, i, buffer, client_count, WRITE);
 				}
 			}
 		}
