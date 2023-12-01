@@ -7,6 +7,12 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+
+typedef struct s_clients {
+	int		fd;
+	int		nbr;
+} t_clients;
+
 void errorStr(char* msg) {
 	if (msg) {
 		write(2, msg, strlen(msg));
@@ -16,20 +22,20 @@ void errorStr(char* msg) {
 	exit(1);
 }
 
-void broadcast(int* clients, int sender, const char* message, int client_count, int type) {
+void broadcast(t_clients* clients, int sender, const char* message, int client_count, int type) {
 	char broadcast_message[4096];
 
 	if (type == 0) {
-		sprintf(broadcast_message, "server: client %d just arrived\n", sender);
+		sprintf(broadcast_message, "server: client %d just arrived\n", clients[sender].nbr);
 	} else if (type == 1) {
-		sprintf(broadcast_message, "server: client %d just left\n", sender);
+		sprintf(broadcast_message, "server: client %d just left\n", clients[sender].nbr);
 	} else if (type == 2) {
-		sprintf(broadcast_message, "client %d: %s", sender, message);
+		sprintf(broadcast_message, "client %d: %s", clients[sender].nbr, message);
 	}
 
 	for (int i = 0; i < client_count; i++) {
-		if (clients[i] != -1 && i != sender) {
-			send(clients[i], broadcast_message, strlen(broadcast_message), 0);
+		if (clients[i].fd != -1 && i != sender) {
+			send(clients[i].fd, broadcast_message, strlen(broadcast_message), 0);
 		}
 	}
 }
@@ -38,6 +44,7 @@ int main(int argc, char** argv) {
 	if (argc != 2) {
 		errorStr("Wrong number of argument\n");
 	}
+
 	int client_count = 10;
 	int port = atoi(argv[1]);
 	char buffer[4096];
@@ -52,11 +59,13 @@ int main(int argc, char** argv) {
 	memset(&server_address, 0, sizeof(server_address));
 	server_address.sin_family = AF_INET;
 	server_address.sin_port = htons(port);
-	server_address.sin_addr.s_addr = INADDR_ANY;
+	server_address.sin_addr.s_addr = htonl(2130706433); //127.0.0.1
 
-	int clients[client_count];
+	int last_nbr = 0;
+	t_clients clients[client_count];
 	for (int i = 0; i < client_count; i++) {
-		clients[i] = -1;
+		clients[i].fd = -1;
+		clients[i].nbr = 0;
 	}
 
 	fd_set read_fds;
@@ -74,16 +83,16 @@ int main(int argc, char** argv) {
 
 	printf("Server listening on port %d...\n", port);
 
-while (1) {
+	while (1) {
 		FD_ZERO(&read_fds);
 		FD_SET(server_socket, &read_fds);
 		max_fd = server_socket;
 
 		for (int i = 0; i < client_count; i++) {
-			if (clients[i] != -1) {
-				FD_SET(clients[i], &read_fds);
-				if (clients[i] > max_fd) {
-					max_fd = clients[i];
+			if (clients[i].fd != -1) {
+				FD_SET(clients[i].fd, &read_fds);
+				if (clients[i].fd > max_fd) {
+					max_fd = clients[i].fd;
 				}
 			}
 		}
@@ -100,8 +109,10 @@ while (1) {
 				errorStr(NULL);
 			}
 			for (int i = 0; i < client_count; i++) {
-				if (clients[i] == -1) {
-					clients[i] = new_client;
+				if (clients[i].fd == -1) {
+					clients[i].fd = new_client;
+					clients[i].nbr = last_nbr;
+					last_nbr++;
 					broadcast(clients, i, NULL, client_count, 0);
 					break;
 				}
@@ -109,14 +120,14 @@ while (1) {
 		}
 
 		for (int i = 0; i < client_count; i++) {
-			if (clients[i] != -1 && FD_ISSET(clients[i], &read_fds)) {
+			if (clients[i].fd != -1 && FD_ISSET(clients[i].fd, &read_fds)) {
 				memset(buffer, 0, sizeof(buffer));
-				ssize_t bytes_received = recv(clients[i], buffer, sizeof(buffer), 0);
+				ssize_t bytes_received = recv(clients[i].fd, buffer, sizeof(buffer), 0);
 
 				if (bytes_received <= 0) {
 					broadcast(clients, i, NULL, client_count, 1);
-					close(clients[i]);
-					clients[i] = -1;
+					close(clients[i].fd);
+					clients[i].fd = -1;
 				} else {
 					broadcast(clients, i, buffer, client_count, 2);
 				}
