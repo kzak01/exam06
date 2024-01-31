@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <arpa/inet.h>
 
 typedef struct s_clients {
@@ -20,20 +21,26 @@ void errorStr(char* msg) {
 	if (msg) {
 		write(2, msg, strlen(msg));
 	} else {
-		write(2, "Fatal error\n", 12);
+		write(2, "Fatal error", 12);
 	}
+	write(2, "\n", 1);
 	exit(1);
 }
 
 void broadcast(t_clients* clients, int sender, const char* message, int client_count, int type) {
 	char broadcast_message[4096];
+	memset(broadcast_message, 0, sizeof(broadcast_message));
 
 	if (type == NEW) {
 		sprintf(broadcast_message, "server: client %d just arrived\n", clients[sender].id);
 	} else if (type == LEFT) {
 		sprintf(broadcast_message, "server: client %d just left\n", clients[sender].id);
 	} else if (type == WRITE) {
-		sprintf(broadcast_message, "client %d: %s", clients[sender].id, message);
+		// if (message && *message && strstr(message, "\n") != message) {
+			sprintf(broadcast_message, "client %d: %s", clients[sender].id, message);
+		// } else {
+		// 	return;
+		// }
 	}
 
 	for (int i = 0; i < client_count; i++) {
@@ -45,7 +52,7 @@ void broadcast(t_clients* clients, int sender, const char* message, int client_c
 
 int main(int argc, char** argv) {
 	if (argc != 2) {
-		errorStr("Wrong number of argument\n");
+		errorStr("Wrong number of argument");
 	}
 
 	int client_count = 10;
