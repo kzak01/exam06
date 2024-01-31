@@ -16,6 +16,9 @@ typedef struct s_clients {
 } t_clients;
 
 enum { NEW, LEFT, WRITE };
+fd_set read_fds, write_fds, active_fds;
+int client_count = 10;
+int last_id = 0;
 
 void errorStr(char* msg) {
 	if (msg) {
@@ -27,35 +30,28 @@ void errorStr(char* msg) {
 	exit(1);
 }
 
-void broadcast(t_clients* clients, int sender, const char* message, int client_count, int type) {
+void broadcast(t_clients* clients, int sender, const char* message, int type) {
 	char broadcast_message[4096];
 	memset(broadcast_message, 0, sizeof(broadcast_message));
 
-	if (type == NEW) {
-		sprintf(broadcast_message, "server: client %d just arrived\n", clients[sender].id);
-	} else if (type == LEFT) {
-		sprintf(broadcast_message, "server: client %d just left\n", clients[sender].id);
-	} else if (type == WRITE) {
-		// if (message && *message && strstr(message, "\n") != message) {
-			sprintf(broadcast_message, "client %d: %s", clients[sender].id, message);
-		// } else {
-		// 	return;
-		// }
-	}
+	char* broadcast_formats[] = {
+		"server: client %d just arrived\n",
+		"server: client %d just left\n",
+		"client %d: %s"
+	};
+	sprintf(broadcast_message, broadcast_formats[type], clients[sender].id, message);
 
 	for (int i = 0; i < client_count; i++) {
-		if (clients[i].fd != -1 && i != sender) {
+		if (clients[i].fd != -1 && i != sender && FD_ISSET(clients[i].fd, &write_fds)) {
 			send(clients[i].fd, broadcast_message, strlen(broadcast_message), 0);
 		}
 	}
 }
 
 int main(int argc, char** argv) {
-	if (argc != 2) {
-		errorStr("Wrong number of argument");
-	}
+	if (argc != 2)
+		errorStr("Wrong number of arguments");
 
-	int client_count = 10;
 	int port = atoi(argv[1]);
 	char buffer[4096];
 
@@ -71,15 +67,8 @@ int main(int argc, char** argv) {
 	server_address.sin_port = htons(port);
 	server_address.sin_addr.s_addr = htonl(2130706433); //127.0.0.1
 
-	int last_id = 0;
 	t_clients clients[client_count];
-	for (int i = 0; i < client_count; i++) {
-		clients[i].fd = -1;
-		clients[i].id = 0;
-	}
-
-	fd_set read_fds;
-	int max_fd;
+	memset(clients, -1, sizeof(clients));
 
 	if (bind(server_socket, (struct sockaddr *)&server_address, sizeof(server_address)) == -1) {
 		close(server_socket);
@@ -91,42 +80,41 @@ int main(int argc, char** argv) {
 		errorStr(NULL);
 	}
 
-	printf("Server listening on port %d...\n", port);
+	int max_fd = server_socket;
+	FD_ZERO(&active_fds);
+	FD_SET(server_socket, &active_fds);
+
+	// printf("Server listening on port %d...\n", port);
 
 	while (1) {
-		FD_ZERO(&read_fds);
-		FD_SET(server_socket, &read_fds);
+		read_fds = write_fds = active_fds;
 		max_fd = server_socket;
 
 		for (int i = 0; i < client_count; i++) {
 			if (clients[i].fd != -1) {
-				FD_SET(clients[i].fd, &read_fds);
-				if (clients[i].fd > max_fd) {
+				if (clients[i].fd > max_fd)
 					max_fd = clients[i].fd;
-				}
 			}
 		}
 
-		if (select(max_fd + 1, &read_fds, NULL, NULL, NULL) == -1) {
-			close(server_socket);
-			errorStr(NULL);
-		}
+		if (select(max_fd + 1, &read_fds, &write_fds, NULL, NULL) == -1)
+			continue;
 
 		if (FD_ISSET(server_socket, &read_fds)) {
 			int new_client = accept(server_socket, (struct sockaddr *)&client_address, &client_address_len);
-			if (new_client == -1) {
-				close(server_socket);
-				errorStr(NULL);
-			}
+			if (new_client == -1)
+				continue;
 			for (int i = 0; i < client_count; i++) {
 				if (clients[i].fd == -1) {
 					clients[i].fd = new_client;
 					clients[i].id = last_id;
+					FD_SET(new_client, &active_fds);
 					last_id++;
-					broadcast(clients, i, NULL, client_count, NEW);
+					broadcast(clients, i, NULL, NEW);
 					break;
 				}
 			}
+			continue;
 		}
 
 		for (int i = 0; i < client_count; i++) {
@@ -135,16 +123,15 @@ int main(int argc, char** argv) {
 				ssize_t bytes_received = recv(clients[i].fd, buffer, sizeof(buffer), 0);
 
 				if (bytes_received <= 0) {
-					broadcast(clients, i, NULL, client_count, LEFT);
+					broadcast(clients, i, NULL, LEFT);
+					FD_CLR(clients[i].fd, &active_fds);
 					close(clients[i].fd);
 					clients[i].fd = -1;
 				} else {
-					broadcast(clients, i, buffer, client_count, WRITE);
+					broadcast(clients, i, buffer, WRITE);
 				}
 			}
 		}
 	}
-
-	close(server_socket);
 	return 0;
 }
