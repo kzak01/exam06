@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
 		ssize_t bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
 
 		if (bytes_received > 0) {
-			printf("Server response: %s", buffer);
+			printf("[Server response] %s", buffer);
 		}
 	}
 
